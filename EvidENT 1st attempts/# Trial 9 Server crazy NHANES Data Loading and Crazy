@@ -1,0 +1,208 @@
+# NHANES Interactive Dashboard - Professional & Rotating 3D Mountain
+# Author: Isabella
+# Date: 2025-09-15
+
+import os
+import pandas as pd
+import numpy as np
+from sklearn.cluster import KMeans
+import plotly.graph_objects as go
+import plotly.express as px
+import dash
+from dash import dcc, html
+from dash.dependencies import Input, Output
+from threading import Timer
+import math
+import webbrowser
+
+# -----------------------------
+# Load Data
+# -----------------------------
+data_folder = '/Users/isabella/SyntHH/data'
+demo_path = os.path.join(data_folder, 'demo', 'nhanes_demo_1999-2000.csv')
+aux_path  = os.path.join(data_folder, 'pta', 'nhanes_aux_1999-2000.csv')
+
+demo_df = pd.read_csv(demo_path)
+aux_df  = pd.read_csv(aux_path)
+
+# Keep only participants present in both datasets
+common_seqn = demo_df['SEQN'].isin(aux_df['SEQN'])
+demo_df = demo_df[common_seqn].reset_index(drop=True)
+aux_df  = aux_df[aux_df['SEQN'].isin(demo_df['SEQN'])].reset_index(drop=True)
+
+# Ensure age column exists
+if 'RIDAGEYR' not in aux_df.columns:
+    aux_df['RIDAGEYR'] = demo_df['RIDAGEYR']
+
+# -----------------------------
+# Right/Left Ear Columns
+# -----------------------------
+def parse_frequency(col):
+    try:
+        freq_str = col[4:-1]
+        if 'K' in freq_str:
+            return int(freq_str.replace('K','000'))
+        return int(freq_str)
+    except:
+        return None
+
+right_ear_cols = [c for c in aux_df.columns if c.endswith('R') and parse_frequency(c) is not None]
+right_freqs = [parse_frequency(c) for c in right_ear_cols]
+
+left_ear_cols = [c for c in aux_df.columns if c.endswith('L') and parse_frequency(c) is not None]
+left_freqs = [parse_frequency(c) for c in left_ear_cols]
+
+# Convert all ear columns to numeric and fill NaN
+aux_df[right_ear_cols] = aux_df[right_ear_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+aux_df[left_ear_cols] = aux_df[left_ear_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+
+# -----------------------------
+# Dash App
+# -----------------------------
+app = dash.Dash(__name__)
+app.title = "NHANES Hearing Dashboard"
+
+# -----------------------------
+# Scatter Plots
+# -----------------------------
+scatter_right = px.scatter(
+    aux_df.melt(id_vars='RIDAGEYR', value_vars=right_ear_cols, var_name='Frequency', value_name='Threshold'),
+    x='RIDAGEYR', y='Threshold', color='Frequency',
+    color_discrete_sequence=px.colors.qualitative.Set1,
+    title='Right Ear: Hearing Thresholds vs Age'
+)
+scatter_right.update_layout(
+    plot_bgcolor='white', paper_bgcolor='white',
+    font=dict(family='Arial', color='#4b0082', size=12)
+)
+
+scatter_left = px.scatter(
+    aux_df.melt(id_vars='RIDAGEYR', value_vars=left_ear_cols, var_name='Frequency', value_name='Threshold'),
+    x='RIDAGEYR', y='Threshold', color='Frequency',
+    color_discrete_sequence=px.colors.qualitative.Set2,
+    title='Left Ear: Hearing Thresholds vs Age'
+)
+scatter_left.update_layout(
+    plot_bgcolor='white', paper_bgcolor='white',
+    font=dict(family='Arial', color='#4b0082', size=12)
+)
+
+# -----------------------------
+# 3D Hearing Mountain
+# -----------------------------
+def create_surface(n_clusters=3):
+    right_data = aux_df[right_ear_cols].values
+    ages = aux_df['RIDAGEYR'].values
+    freqs = np.array(right_freqs)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    clusters = kmeans.fit_predict(right_data)
+    X_grid, Y_grid = np.meshgrid(ages, freqs, indexing='ij')
+    Z = right_data
+    fig = go.Figure(data=[go.Surface(
+        x=X_grid, y=Y_grid, z=Z,
+        surfacecolor=np.repeat(clusters[:,None], len(freqs), axis=1),
+        colorscale='Viridis',
+        colorbar=dict(title='Cluster')
+    )])
+    fig.update_layout(
+        scene=dict(xaxis_title='Age', yaxis_title='Frequency (Hz)', zaxis_title='Threshold (dB)'),
+        font=dict(family='Arial', color='#4b0082', size=12),
+        title=f'3D Hearing Mountain with {n_clusters} Clusters'
+    )
+    return fig
+
+# Rotation angle
+angle = 0
+
+# -----------------------------
+# Ribbon Forest
+# -----------------------------
+X = aux_df[right_ear_cols].fillna(0)
+kmeans = KMeans(n_clusters=3, random_state=42).fit(X)
+aux_df['cluster'] = kmeans.labels_
+colors_ribbon = px.colors.qualitative.Dark24
+fig_ribbon = go.Figure()
+for idx, row in aux_df.iterrows():
+    fig_ribbon.add_trace(go.Scatter3d(
+        x=[row['RIDAGEYR']]*len(right_ear_cols),
+        y=right_freqs,
+        z=row[right_ear_cols].values,
+        mode='lines+markers',
+        line=dict(width=4, color=colors_ribbon[int(row['cluster'])%len(colors_ribbon)]),
+        marker=dict(size=3),
+        hovertemplate='Age: %{x}<br>Freq: %{y} Hz<br>Threshold: %{z} dB<br>Cluster: '+str(int(row['cluster']))
+    ))
+fig_ribbon.update_layout(scene=dict(xaxis_title='Age', yaxis_title='Frequency', zaxis_title='Threshold'),
+                         font=dict(family='Arial', color='#4b0082', size=12),
+                         title='Ribbon Forest')
+
+# -----------------------------
+# Cluster Radar
+# -----------------------------
+categories = [str(f) for f in right_freqs]
+fig_radar = go.Figure()
+colors_radar = px.colors.qualitative.Set3
+for cluster_idx in range(3):
+    cluster_data = X[aux_df['cluster']==cluster_idx]
+    avg_values = cluster_data.mean().values.tolist()
+    avg_values += avg_values[:1]
+    fig_radar.add_trace(go.Scatterpolar(
+        r=avg_values,
+        theta=categories + [categories[0]],
+        fill='toself',
+        name=f'Cluster {cluster_idx}',
+        line=dict(color=colors_radar[cluster_idx%len(colors_radar)], width=3)
+    ))
+fig_radar.update_layout(
+    polar=dict(radialaxis=dict(visible=True)),
+    font=dict(family='Arial', color='#4b0082', size=12),
+    title='Cluster Average Radar'
+)
+
+# -----------------------------
+# Static content (scatter, ribbon, radar)
+# -----------------------------
+static_content = html.Div([
+    html.H3("Right Ear Scatter Plot"), dcc.Graph(figure=scatter_right),
+    html.H3("Left Ear Scatter Plot"), dcc.Graph(figure=scatter_left),
+    html.H3("Ribbon Forest"), dcc.Graph(figure=fig_ribbon),
+    html.H3("Cluster Average Radar"), dcc.Graph(figure=fig_radar)
+])
+
+# -----------------------------
+# Layout including rotating 3D mountain
+# -----------------------------
+app.layout = html.Div([
+    html.H1("NHANES Hearing Interactive Dashboard", style={'textAlign':'center','color':'#6a0dad','font-weight':'bold'}),
+    html.Img(src='/assets/ear.jpeg', style={'height':'150px','display':'block','margin':'auto','border-radius':'15px','border':'3px solid #6a0dad'}),
+    html.H3("3D Hearing Mountain"), dcc.Graph(id='mountain-3d'),
+    static_content,
+    dcc.Interval(id='rotation-interval', interval=100, n_intervals=0)
+],
+style={'font-family':'Arial, sans-serif','backgroundColor':'#e6f0ff','padding':'20px','color':'#4b0082'}
+)
+
+# -----------------------------
+# Rotate 3D mountain
+# -----------------------------
+@app.callback(
+    Output('mountain-3d','figure'),
+    Input('rotation-interval','n_intervals')
+)
+def rotate_mountain(n):
+    global angle
+    angle += math.pi/180
+    eye_x = 1.5 * np.cos(angle)
+    eye_y = 1.5 * np.sin(angle)
+    eye_z = 0.5
+    fig = create_surface(3)
+    fig.update_layout(scene_camera=dict(eye=dict(x=eye_x, y=eye_y, z=eye_z)))
+    return fig
+
+# -----------------------------
+# Run Server
+# -----------------------------
+if __name__ == '__main__':
+    url = "http://127.0.0.1:8050/"
+    Timer(1, lambda: webbrowser.open(url)).start()
+    app.run(debug=True)

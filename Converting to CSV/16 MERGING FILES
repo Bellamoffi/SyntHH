@@ -1,0 +1,59 @@
+import os
+import glob
+import pandas as pd
+from functools import reduce
+
+# --------------------------
+# Base folder containing all dataset folders
+base_folder = "/Users/isabella/Library/Mobile Documents/com~apple~CloudDocs/Graduated/UCL EvidENT/DOWNLOADED DATA/CSV READABLE"
+
+# Dataset folders to merge
+dataset_folders = [
+    "Audiometry",
+    "Audiometry - Acoustic Reflex",
+    "Audiometry - Tympanometry",
+    "Audiometry - Wideband Reflectance"
+]
+
+# Output folder inside CSV READABLE
+output_folder = os.path.join(base_folder, "Merged_Audiometry")
+os.makedirs(output_folder, exist_ok=True)
+output_file = os.path.join(output_folder, "Merged_Audiometry.csv")
+
+# --------------------------
+# Name of the key column
+key_column = "SEQN - Respondent sequence number"
+
+all_dfs = []
+
+for folder_name in dataset_folders:
+    folder_path = os.path.join(base_folder, folder_name)
+    if not os.path.exists(folder_path):
+        print(f"⚠️ Folder not found: {folder_path}")
+        continue
+
+    # Find all CSVs in the folder (recursive)
+    csv_files = glob.glob(os.path.join(folder_path, "*.csv"))
+    if not csv_files:
+        print(f"⚠️ No CSVs found in folder: {folder_path}")
+        continue
+
+    dfs = []
+    for f in csv_files:
+        df = pd.read_csv(f)
+        # Add folder name prefix to all columns except key column
+        df = df.rename(columns={col: f"{folder_name}_{col}" if col != key_column else col for col in df.columns})
+        dfs.append(df)
+
+    # Concatenate multiple years for this folder
+    combined = pd.concat(dfs, ignore_index=True)
+    all_dfs.append(combined)
+
+# --------------------------
+# Merge all datasets on the key column
+if all_dfs:
+    merged_df = reduce(lambda left, right: pd.merge(left, right, on=key_column, how="outer"), all_dfs)
+    merged_df.to_csv(output_file, index=False)
+    print(f"✅ Merged CSV saved to: {output_file}")
+else:
+    print("❌ No datasets found to merge.")

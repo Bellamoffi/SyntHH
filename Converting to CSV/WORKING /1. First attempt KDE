@@ -1,0 +1,132 @@
+import pandas as pd
+import numpy as np
+import glob
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, roc_auc_score
+
+# ----------------------------
+# 1. Define base directory
+# ----------------------------
+base_dir = "/Users/isabella/Library/Mobile Documents/com~apple~CloudDocs/Graduated/UCL EvidENT/DOWNLOADED DATA/CSV DATA/"
+
+# Folder paths (adjusted to match existing directories)
+paths = {
+    "bpx": base_dir + "Blood Pressure - Oscillometric Measurement/*.csv",  # classic BP readings
+    "bmx": base_dir + "Body Measures/*.csv",
+    "mcq": base_dir + "Medical Conditions/*.csv",
+    "diq": base_dir + "Diabetes/*.csv",
+    "alq": base_dir + "Alcohol Use/*.csv",
+    "ghb": base_dir + "Glycohemoglobin/*.csv",
+    "chol": base_dir + "Blood Pressure - Oscillometric Measurement/*.csv",  # example if cholesterol exists
+}
+
+# ----------------------------
+# 2. Helper: load + stack
+# ----------------------------
+def load_data(path_pattern, name=None):
+    files = glob.glob(path_pattern)
+    if not files:
+        print(f"Warning: no files found for {name or path_pattern}")
+        return pd.DataFrame()  # return empty df instead of failing
+    dfs = [pd.read_csv(f) for f in files]
+    return pd.concat(dfs, ignore_index=True)
+
+# ----------------------------
+# 3. Load datasets safely
+# ----------------------------
+bpx  = load_data(paths["bpx"], "BPX")
+bmx  = load_data(paths["bmx"], "BMX")
+mcq  = load_data(paths["mcq"], "MCQ")
+diq  = load_data(paths["diq"], "DIQ")
+alq  = load_data(paths["alq"], "ALQ")
+ghb  = load_data(paths["ghb"], "GHB")
+chol = load_data(paths["chol"], "CHOL")  # optional
+
+# ----------------------------
+# 4. Merge data
+# ----------------------------
+# Start with BP data if it exists, else first non-empty dataset
+for df_start in [bpx, bmx, mcq, diq, alq, ghb, chol]:
+    if not df_start.empty:
+        df = df_start.copy()
+        break
+else:
+    raise ValueError("No data loaded!")
+
+# Merge other datasets
+for dset in [bpx, bmx, mcq, diq, alq, ghb, chol]:
+    if not dset.empty and dset is not df:
+        df = df.merge(dset, on="SEQN", how="left")
+
+# ----------------------------
+# 5. Select features
+# ----------------------------
+features = [
+    "BMXWAIST", "RIDAGEYR", "BMXBMI", "BPXSY1", "BPXDI1",
+    "BMXWT", "BMXHT", "DR1TCARB", "DR1TSODI", "DR1TALCO",
+    "DR1TCAFF", "DR1TFIBE", "MCQ160E", "MCQ160F", "DIQ170",
+    "RIDRETH1", "INDFMIN2"
+]
+
+labs = ["LBXGLU", "LBXGH", "LBXTC", "LBDHDD", "LBXTR"]
+
+all_features = [f for f in features + labs if f in df.columns]
+df_features = df[all_features].copy()
+
+# ----------------------------
+# 6. Define outcomes
+# ----------------------------
+df["diabetes"] = (
+    ((df.get("LBXGH", 0) >= 6.5) |
+     (df.get("LBXGLU", 0) >= 126) |
+     (df.get("MCQ160E", 0) == 1))
+).astype(int)
+
+df["cvd"] = (
+    ((df.get("MCQ160B", 0) == 1) |
+     (df.get("MCQ160C", 0) == 1) |
+     (df.get("MCQ160E", 0) == 1))
+).astype(int)
+
+# ----------------------------
+# 7. Preprocess
+# ----------------------------
+df_clean = df_features.fillna(df_features.median())
+df_clean = pd.get_dummies(df_clean, drop_first=True)
+
+# ----------------------------
+# 8. Train/test split
+# ----------------------------
+X = df_clean
+y = df["diabetes"]
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# ----------------------------
+# 9. Train model
+# ----------------------------
+model = RandomForestClassifier(n_estimators=200, random_state=42)
+model.fit(X_train, y_train)
+
+# ----------------------------
+# 10. Evaluate
+# ----------------------------
+y_pred = model.predict(X_test)
+print(classification_report(y_test, y_pred))
+print("AUC:", roc_auc_score(y_test, model.predict_proba(X_test)[:,1]))
+
+# ----------------------------
+# 11. Feature importance
+# ----------------------------
+importances = model.feature_importances_
+indices = np.argsort(importances)
+
+plt.figure(figsize=(8,6))
+plt.barh(range(len(indices)), importances[indices])
+plt.yticks(range(len(indices)), X.columns[indices])
+plt.xlabel("Importance")
+plt.title("Feature importance for diabetes prediction")
+plt.tight_layout()
+plt.show()

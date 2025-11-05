@@ -1,0 +1,115 @@
+import os
+import requests
+from urllib.parse import urljoin, urlparse
+from bs4 import BeautifulSoup
+import pyreadstat
+import zipfile
+from ftplib import FTP
+
+def download_and_convert_all_nhanes(base_url, xpt_base_folder, csv_base_folder):
+    """
+    Automatically downloads all XPT files (HTTP/FTP), extracts ZIPs, and converts to CSV.
+    Organizes folders by dataset.
+    """
+    os.makedirs(xpt_base_folder, exist_ok=True)
+    os.makedirs(csv_base_folder, exist_ok=True)
+
+    print(f"Fetching NHANES page from {base_url}...")
+    resp = requests.get(base_url)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    table = soup.find("table")
+    if table is None:
+        print("❌ No table found on the page.")
+        return
+
+    rows = table.find_all("tr")
+    header = [th.get_text(strip=True) for th in rows[0].find_all("th")]
+    data_name_idx = header.index("Data File Name")
+    data_file_idx = header.index("Data File")
+    print(f"Detected columns: {header}")
+
+    def download_file(url, save_path):
+        parsed = urlparse(url)
+        if parsed.scheme == "ftp":
+            print(f"Downloading FTP file: {os.path.basename(save_path)}")
+            ftp = FTP(parsed.hostname)
+            ftp.login()
+            ftp.cwd(os.path.dirname(parsed.path))
+            with open(save_path, "wb") as f:
+                ftp.retrbinary(f"RETR {os.path.basename(parsed.path)}", f.write)
+            ftp.quit()
+        else:
+            print(f"Downloading: {os.path.basename(save_path)}")
+            r = requests.get(url, stream=True)
+            r.raise_for_status()
+            with open(save_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+    def convert_xpt_to_csv(xpt_path, csv_path):
+        try:
+            df, meta = pyreadstat.read_xport(xpt_path)
+            df.to_csv(csv_path, index=False, encoding="utf-8")
+            print(f"✅ Converted to CSV: {os.path.basename(csv_path)}")
+        except Exception as e:
+            print(f"❌ Failed to convert {os.path.basename(xpt_path)}: {e}")
+
+    for row in rows[1:]:
+        cols = row.find_all("td")
+        if not cols:
+            continue
+
+        dataset_name = cols[data_name_idx].get_text(strip=True)
+        if not dataset_name:
+            continue
+
+        print(f"\n🔍 Processing dataset: {dataset_name}")
+
+        xpt_folder = os.path.join(xpt_base_folder, dataset_name)
+        csv_folder = os.path.join(csv_base_folder, dataset_name)
+        os.makedirs(xpt_folder, exist_ok=True)
+        os.makedirs(csv_folder, exist_ok=True)
+
+        links = cols[data_file_idx].find_all("a")
+        for link in links:
+            href = link.get("href")
+            if not href:
+                continue
+            file_name = os.path.basename(href)
+            xpt_path = os.path.join(xpt_folder, file_name)
+            csv_path = os.path.join(csv_folder, file_name.replace(".xpt", ".csv"))
+
+            if not os.path.exists(xpt_path):
+                download_file(urljoin(base_url, href), xpt_path)
+            else:
+                print(f"Already downloaded: {file_name}")
+
+            # Handle ZIP files
+            if xpt_path.lower().endswith(".zip"):
+                with zipfile.ZipFile(xpt_path, 'r') as zip_ref:
+                    zip_ref.extractall(xpt_folder)
+                    for extracted_file in zip_ref.namelist():
+                        if extracted_file.lower().endswith(".xpt"):
+                            convert_xpt_to_csv(
+                                os.path.join(xpt_folder, extracted_file),
+                                os.path.join(csv_folder, extracted_file.replace(".xpt", ".csv"))
+                            )
+            # Handle regular XPT files
+            elif xpt_path.lower().endswith(".xpt"):
+                if not os.path.exists(csv_path):
+                    convert_xpt_to_csv(xpt_path, csv_path)
+                else:
+                    print(f"CSV already exists: {os.path.basename(csv_path)}")
+
+    print("\n🎉 All datasets processed!")
+
+
+# Example usage
+if __name__ == "__main__":
+    download_and_convert_all_nhanes(
+        base_url="https://wwwn.cdc.gov/nchs/nhanes/search/datapage.aspx?Component=Examination",
+        xpt_base_folder="/Users/isabella/Library/Mobile Documents/com~apple~CloudDocs/Graduated/UCL EvidENT/DOWNLOADED DATA/XPT DATA",
+        csv_base_folder="/Users/isabella/Library/Mobile Documents/com~apple~CloudDocs/Graduated/UCL EvidENT/DOWNLOADED DATA/CSV DATA"
+    )

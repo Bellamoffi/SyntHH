@@ -1,0 +1,65 @@
+import requests
+import pandas as pd
+import pyreadstat
+from bs4 import BeautifulSoup
+import os
+
+# Relevant keywords
+keywords = [
+    "Cardiovascular Fitness",
+    "Ophthalmology - Frequency Doubling Technology",
+    "Physical Activity Monitor",
+    "Vision"
+]
+
+# URL of the NHANES Examination component page
+url = "https://wwwn.cdc.gov/nchs/nhanes/search/datapage.aspx?Component=Examination"
+
+# Output folder
+output_folder = "/Users/isabella/Library/Mobile Documents/com~apple~CloudDocs/Graduated/UCL EvidENT/DOWNLOADED DATA/CSV DATA"
+os.makedirs(output_folder, exist_ok=True)
+
+# Request the page
+response = requests.get(url)
+soup = BeautifulSoup(response.text, 'html.parser')
+
+# NHANES tables are usually <table> elements
+tables = soup.find_all('table')
+
+# We'll assume the first table is the one we want (you can inspect HTML to confirm)
+table = tables[0]
+
+# Read table into pandas
+# Use header=1 to use the second row as column names, skip first row if needed
+df = pd.read_html(str(table), header=1)[0]
+
+# Skip the first row of actual data (row index 0) if it contains notes or empty values
+df = df.iloc[2:]  # Starts from 4th row (0-based index)
+
+# Filter rows where 'Data File Name' contains one of our keywords
+filtered = df[df['Data File Name'].str.contains('|'.join(keywords), case=False, na=False)]
+
+# Loop through filtered rows
+for _, row in filtered.iterrows():
+    file_name = row['File Name']  # Column that contains the XPT file names
+    download_url = f"https://wwwn.cdc.gov/nchs/nhanes/{file_name}"
+    
+    # Create subfolder for each keyword
+    data_type = row['Data File Name']
+    subfolder = os.path.join(output_folder, data_type.replace(" ", "_"))
+    os.makedirs(subfolder, exist_ok=True)
+    
+    csv_path = os.path.join(subfolder, f"{file_name}.csv")
+    
+    # Download XPT
+    r = requests.get(download_url)
+    with open(csv_path, "wb") as f:
+        f.write(r.content)
+    
+    # Convert to CSV
+    df_xpt, meta = pyreadstat.read_xport(csv_path)
+    df_xpt.to_csv(csv_path, index=False, encoding='utf-8')
+    
+    print(f"Downloaded and converted: {file_name} → {csv_path}")
+
+print("All relevant files processed.")

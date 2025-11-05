@@ -1,0 +1,28 @@
+import os
+import pyreadstat
+
+# Input folder containing your .XPT files
+input_folder = "/Users/isabella/Library/Mobile Documents/com~apple~CloudDocs/Graduated/UCL EvidENT/AUDIOMETRY DATA"
+
+# Output folder (will be created if it doesn't exist)
+output_folder = "/Users/isabella/Library/Mobile Documents/com~apple~CloudDocs/Graduated/UCL EvidENT/CSV AUDIOMETRY DATA"
+os.makedirs(output_folder, exist_ok=True)
+
+# Loop through all files in the input folder
+for file in os.listdir(input_folder):
+    if file.lower().endswith(".xpt"):
+        xpt_path = os.path.join(input_folder, file)
+        csv_filename = file.replace(".xpt", ".csv")  # Keep the same name, just .csv
+        csv_path = os.path.join(output_folder, csv_filename)
+
+        try:
+            # Read the .XPT file
+            df, meta = pyreadstat.read_xport(xpt_path)
+
+            # Save as CSV
+            df.to_csv(csv_path, index=False, encoding='utf-8')
+            print(f"Converted {file} → {csv_filename}")
+        except Exception as e:
+            print(f"Failed to convert {file}: {e}")
+
+print("All files processed.")

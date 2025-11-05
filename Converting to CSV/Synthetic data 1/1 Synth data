@@ -1,0 +1,94 @@
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.neighbors import KernelDensity
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+
+# ----------------------------
+# CONFIG: adjust for your data
+# ----------------------------
+MASTER_CSV = "/Users/isabella/Library/Mobile Documents/com~apple~CloudDocs/Graduated/UCL EvidENT/DOWNLOADED DATA/CSV READABLE/MERGED_OUTPUT/MASTER_MERGED.csv"
+CONT_COLS = ["RIDAGEYR", "AUXU1000R", "AUXU4000R", "AUXU8000R"]  # example continuous features
+TARGET_COL = "DIQ010"  # diabetes flag: 1=yes, 0=no
+
+# ----------------------------
+# 1. Load data
+# ----------------------------
+df = pd.read_csv(MASTER_CSV, low_memory=False)
+df = df[CONT_COLS + [TARGET_COL]].dropna()
+df[TARGET_COL] = df[TARGET_COL].apply(lambda x: 1 if x == 1 else 0)
+
+X_real = df[CONT_COLS].values
+y_real = df[TARGET_COL].values
+
+# ----------------------------
+# 2. Split real data: test set for evaluation
+# ----------------------------
+X_train_real, X_test_real, y_train_real, y_test_real = train_test_split(
+    X_real, y_real, test_size=0.3, stratify=y_real, random_state=42
+)
+
+# ----------------------------
+# 3. Fit KDE per class
+# ----------------------------
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train_real)
+
+classes = np.unique(y_train_real)
+kde_by_class = {}
+for cls in classes:
+    X_cls = X_train_scaled[y_train_real == cls]
+    kde = KernelDensity(kernel="gaussian", bandwidth=0.5)
+    kde.fit(X_cls)
+    kde_by_class[cls] = kde
+
+# ----------------------------
+# 4. Generate synthetic data
+# ----------------------------
+def generate_synthetic(kde_by_class, scaler, y_train, multiplier=1.0, random_state=42):
+    np.random.seed(random_state)
+    n_samples = int(len(y_train) * multiplier)
+    class_counts = [np.sum(y_train==cls) for cls in np.unique(y_train)]
+    class_props = class_counts / np.sum(class_counts)
+    class_samples = (class_props * n_samples).astype(int)
+    
+    X_synth = []
+    y_synth = []
+    for cls, n_cls in zip(np.unique(y_train), class_samples):
+        kde = kde_by_class[cls]
+        samples_scaled = kde.sample(n_cls)
+        samples = scaler.inverse_transform(samples_scaled)
+        X_synth.append(samples)
+        y_synth.extend([cls]*n_cls)
+    
+    X_synth = np.vstack(X_synth)
+    y_synth = np.array(y_synth)
+    return X_synth, y_synth
+
+multipliers = [0.1, 1.0, 2.0]
+synthetic_datasets = {}
+for m in multipliers:
+    X_syn, y_syn = generate_synthetic(kde_by_class, scaler, y_train_real, multiplier=m)
+    synthetic_datasets[m] = (X_syn, y_syn)
+    print(f"Synthetic {int(m*100)}% generated: X={X_syn.shape}, y={y_syn.shape}")
+
+# ----------------------------
+# 5. Train Random Forest on synthetic, test on real
+# ----------------------------
+for m, (X_syn, y_syn) in synthetic_datasets.items():
+    clf = RandomForestClassifier(n_estimators=200, random_state=42)
+    clf.fit(X_syn, y_syn)
+    y_pred = clf.predict(X_test_real)
+    acc = accuracy_score(y_test_real, y_pred)
+    print(f"RF trained on synthetic {int(m*100)}% -> Accuracy on real test: {acc:.3f}")
+
+# ----------------------------
+# 6. Optional: baseline real->real
+# ----------------------------
+clf_real = RandomForestClassifier(n_estimators=200, random_state=42)
+clf_real.fit(X_train_real, y_train_real)
+y_pred_real = clf_real.predict(X_test_real)
+acc_real = accuracy_score(y_test_real, y_pred_real)
+print(f"RF trained on real -> Accuracy on real test: {acc_real:.3f}")

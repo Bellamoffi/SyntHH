@@ -1,0 +1,78 @@
+def load_and_filter_cohort(common_fhand_suffix='1999-2000.csv'):
+    """Load NHANES cohort data and filter auxiliary and demographic information.
+
+    Args:
+        common_fhand_suffix (str): Common filename suffix for NHANES data files. Default is '1999-2000.csv'.
+
+    Returns:
+        tuple: A tuple containing four DataFrames:
+            - nhanes_demo_df: DataFrame containing demographic data.
+            - filtered_nhanes_aux_df: DataFrame containing filtered auxiliary data.
+            - nhanes_auxr_df: DataFrame containing auxiliary reflex data.
+            - nhanes_auxt_df: DataFrame containing auxiliary tympanometry data.
+    """
+
+    try:
+        # Load NHANES data
+        nhanes_demo_df = pd.read_csv(f'./demo/nhanes_demo_{common_fhand_suffix}')
+        nhanes_aux_df = pd.read_csv(f'./pta/nhanes_aux_{common_fhand_suffix}')
+        nhanes_auxr_df = pd.read_csv(f'./reflex/nhanes_auxr_{common_fhand_suffix}')
+        nhanes_auxt_df = pd.read_csv(f'./tymp/nhanes_auxt_{common_fhand_suffix}')
+
+    except FileNotFoundError:
+        print('Could not find data, please double check that your cwd is where the data is stored.')
+        return
+
+    # Filter auxiliary data
+    filtered_nhanes_aux_df = filter_aux_df(nhanes_aux_df)
+
+    # Filter demographic data
+    filtered_nhanes_demo_df = filter_demo_df(nhanes_demo_df, filtered_nhanes_aux_df)
+
+    return filtered_nhanes_demo_df, filtered_nhanes_aux_df, nhanes_auxr_df, nhanes_auxt_df
+
+
+def filter_aux_df(nhanes_aux_df):
+    """Filter auxiliary data.
+
+    Args:
+        nhanes_aux_df (DataFrame): DataFrame containing NHANES auxiliary data.
+
+    Returns:
+        DataFrame: Filtered DataFrame containing selected columns and replaced error codes with NaNs.
+    """
+    # Select relevant columns
+    subset_col_names = ['SEQN', 'AUXU1K1R', 'AUXU500R', 'AUXU1K2R', 'AUXU2KR', 'AUXU3KR', 'AUXU4KR', 'AUXU6KR',
+                        'AUXU8KR', 'AUXU1K1L', 'AUXU500L', 'AUXU1K2L', 'AUXU2KL', 'AUXU3KL', 'AUXU4KL', 'AUXU6KL',
+                        'AUXU8KL']
+    filtered_nhanes_aux_df = nhanes_aux_df[subset_col_names]
+
+    # Replace error codes with NaNs
+    filtered_nhanes_aux_df = filtered_nhanes_aux_df.replace({888: np.NaN, 666: np.NaN})
+
+    return filtered_nhanes_aux_df
+
+
+def filter_demo_df(nhanes_demo_df, nhanes_aux_df):
+    """Filter demographic data.
+
+    Args:
+        nhanes_demo_df (DataFrame): DataFrame containing NHANES demographic data.
+        nhanes_aux_df (DataFrame): DataFrame containing filtered NHANES auxiliary data.
+
+    Returns:
+        DataFrame: Filtered DataFrame containing selected demographic columns.
+    """
+    # Select relevant columns
+    subset_col_names = ['SEQN', 'RIAGENDR', 'RIDAGEYR', 'RIDAGEMN', 'RIDRETH1']
+
+    # Filter demographic data
+    filtered_demo_df = nhanes_demo_df[subset_col_names]
+
+    # Match patients in demographic data to patients in auxiliary data
+    filtered_demo_df = filtered_demo_df[filtered_demo_df.SEQN.isin(nhanes_aux_df.SEQN)]
+    filtered_demo_df.reset_index(inplace=True, drop=True)
+
+    return filtered_demo_df
+
+

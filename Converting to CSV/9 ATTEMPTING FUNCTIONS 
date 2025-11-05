@@ -1,0 +1,111 @@
+import os
+import requests
+from urllib.parse import urljoin
+from bs4 import BeautifulSoup
+import pyreadstat
+
+def download_and_convert_nhanes(
+    base_url,
+    xpt_base_folder,
+    csv_base_folder,
+    datasets
+):
+    """
+    Downloads specified NHANES datasets as XPT files, converts to CSV, and saves them in organized folders.
+    
+    Parameters:
+    - base_url (str): URL of the NHANES page with the datasets.
+    - xpt_base_folder (str): Folder to store downloaded XPT files.
+    - csv_base_folder (str): Folder to store converted CSV files.
+    - datasets (list of str): List of dataset names to download.
+    """
+    # Create base folders if they don't exist
+    os.makedirs(xpt_base_folder, exist_ok=True)
+    os.makedirs(csv_base_folder, exist_ok=True)
+
+    print(f"Fetching NHANES page from {base_url}...")
+    resp = requests.get(base_url)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    # Find the main table
+    table = soup.find("table")
+    if table is None:
+        print("❌ No table found on the page.")
+        return
+
+    rows = table.find_all("tr")
+
+    # Detect header columns
+    header = [th.get_text(strip=True) for th in rows[0].find_all("th")]
+    data_name_idx = header.index("Data File Name")
+    data_file_idx = header.index("Data File")
+    print(f"Detected columns: {header}")
+
+    # Process each row
+    for row in rows[1:]:
+        cols = row.find_all("td")
+        if not cols:
+            continue
+
+        dataset_name = cols[data_name_idx].get_text(strip=True)
+        if dataset_name not in datasets:
+            continue
+
+        print(f"\n🔍 Processing dataset: {dataset_name}")
+
+        # Create subfolders for XPT and CSV
+        xpt_folder = os.path.join(xpt_base_folder, dataset_name)
+        csv_folder = os.path.join(csv_base_folder, dataset_name)
+        os.makedirs(xpt_folder, exist_ok=True)
+        os.makedirs(csv_folder, exist_ok=True)
+
+        # Find XPT links
+        links = cols[data_file_idx].find_all("a")
+        for link in links:
+            href = link.get("href")
+            if not href or not href.lower().endswith(".xpt"):
+                continue
+
+            # Resolve full URL
+            xpt_url = urljoin(base_url, href)
+            filename = os.path.basename(href)
+            xpt_path = os.path.join(xpt_folder, filename)
+            csv_filename = filename.replace(".xpt", ".csv")
+            csv_path = os.path.join(csv_folder, csv_filename)
+
+            # Download XPT if not exists
+            if not os.path.exists(xpt_path):
+                print(f"Downloading {filename}...")
+                r = requests.get(xpt_url, stream=True)
+                r.raise_for_status()
+                with open(xpt_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            else:
+                print(f"Already downloaded: {filename}")
+
+            # Convert to CSV
+            if not os.path.exists(csv_path):
+                try:
+                    df, meta = pyreadstat.read_xport(xpt_path)
+                    df.to_csv(csv_path, index=False, encoding="utf-8")
+                    print(f"✅ Converted to CSV: {csv_filename}")
+                except Exception as e:
+                    print(f"❌ Failed to convert {filename}: {e}")
+            else:
+                print(f"CSV already exists: {csv_filename}")
+
+    print("\n🎉 All datasets processed!")
+
+# Example usage:
+if __name__ == "__main__":
+    download_and_convert_nhanes(
+        base_url="https://wwwn.cdc.gov/nchs/nhanes/search/datapage.aspx?Component=Examination",
+        xpt_base_folder="/Users/isabella/Library/Mobile Documents/com~apple~CloudDocs/Graduated/UCL EvidENT/DOWNLOADED DATA/XPT DATA",
+        csv_base_folder="/Users/isabella/Library/Mobile Documents/com~apple~CloudDocs/Graduated/UCL EvidENT/DOWNLOADED DATA/CSV DATA",
+        datasets=[
+            "Balance",
+            "Blood Pressure",
+        ]
+    )

@@ -1,0 +1,217 @@
+# NHANES Interactive Dashboard - Fixed Version
+# Author: Isabella
+# Date: 2025-09-15
+
+import os
+import pandas as pd
+import numpy as np
+from sklearn.cluster import KMeans
+import plotly.graph_objects as go
+import plotly.express as px
+import dash
+from dash import dcc, html
+from dash.dependencies import Input, Output
+import webbrowser
+from threading import Timer
+
+# -----------------------------
+# Load Data
+# -----------------------------
+data_folder = '/Users/isabella/SyntHH/data'
+demo_path = os.path.join(data_folder, 'demo', 'nhanes_demo_1999-2000.csv')
+aux_path  = os.path.join(data_folder, 'pta', 'nhanes_aux_1999-2000.csv')
+
+demo_df = pd.read_csv(demo_path)
+aux_df  = pd.read_csv(aux_path)
+
+# Keep only participants present in both datasets
+common_seqn = demo_df['SEQN'].isin(aux_df['SEQN'])
+demo_df = demo_df[common_seqn].reset_index(drop=True)
+aux_df  = aux_df[aux_df['SEQN'].isin(demo_df['SEQN'])].reset_index(drop=True)
+
+# Ensure age column exists
+if 'RIDAGEYR' not in aux_df.columns:
+    aux_df['RIDAGEYR'] = demo_df['RIDAGEYR']
+
+# -----------------------------
+# Parse right/left ear columns
+# -----------------------------
+def parse_frequency(col):
+    try:
+        freq_str = col[4:-1]
+        if 'K' in freq_str:
+            return int(freq_str.replace('K','000'))
+        return int(freq_str)
+    except:
+        return None
+
+right_ear_cols = [c for c in aux_df.columns if c.endswith('R') and parse_frequency(c) is not None]
+right_freqs = [parse_frequency(c) for c in right_ear_cols]
+
+left_ear_cols = [c for c in aux_df.columns if c.endswith('L') and parse_frequency(c) is not None]
+left_freqs = [parse_frequency(c) for c in left_ear_cols]
+
+# -----------------------------
+# Dash App Layout
+# -----------------------------
+app = dash.Dash(__name__)
+app.title = "NHANES Hearing Dashboard"
+
+app.layout = html.Div(style={'font-family':'Arial', 'backgroundColor':'#f7f7f7', 'padding':'20px'},
+    children=[
+        html.H1("NHANES Hearing Interactive Dashboard", style={'textAlign':'center','color':'#333'}),
+        html.Div([html.Img(src='/assets/ear.jpeg', style={'height':'150px','display':'block','margin':'auto'})]),
+        dcc.Tabs([
+            # Scatter Plots
+            dcc.Tab(label='Scatter Plots', children=[
+                html.Div([
+                    html.H3('Right Ear', style={'color':'#555'}),
+                    dcc.Graph(
+                        id='scatter-right',
+                        figure=px.scatter(
+                            aux_df.melt(id_vars='RIDAGEYR', value_vars=right_ear_cols,
+                                        var_name='Frequency', value_name='Threshold'),
+                            x='RIDAGEYR', y='Threshold', color='Frequency',
+                            hover_data=['RIDAGEYR','Threshold'],
+                            title='Right Ear: Hearing Thresholds vs Age'
+                        )
+                    ),
+                    html.H3('Left Ear', style={'color':'#555'}),
+                    dcc.Graph(
+                        id='scatter-left',
+                        figure=px.scatter(
+                            aux_df.melt(id_vars='RIDAGEYR', value_vars=left_ear_cols,
+                                        var_name='Frequency', value_name='Threshold'),
+                            x='RIDAGEYR', y='Threshold', color='Frequency',
+                            hover_data=['RIDAGEYR','Threshold'],
+                            title='Left Ear: Hearing Thresholds vs Age'
+                        )
+                    )
+                ], style={'padding':'10px'})
+            ]),
+            # 3D Hearing Mountain
+            dcc.Tab(label='3D Hearing Mountain', children=[
+                html.Div([
+                    html.Label('Number of Clusters:'),
+                    dcc.Slider(id='cluster-slider', min=1, max=5, step=1, value=3,
+                               marks={i:str(i) for i in range(1,6)}),
+                    dcc.Graph(id='surface-3d')
+                ], style={'padding':'10px'})
+            ]),
+            # Ribbon Forest
+            dcc.Tab(label='Ribbon Forest', children=[
+                html.Div([
+                    html.Label('Number of Clusters:'),
+                    dcc.Slider(id='ribbon-cluster-slider', min=1, max=5, step=1, value=3,
+                               marks={i:str(i) for i in range(1,6)}),
+                    dcc.Graph(id='ribbon-forest-clustered')
+                ], style={'padding':'10px'})
+            ]),
+            # Cluster Average Radar
+            dcc.Tab(label='Cluster Average Radar', children=[
+                html.Div([
+                    html.Label('Number of Clusters:'),
+                    dcc.Slider(id='avg-cluster-slider', min=1, max=5, step=1, value=3,
+                               marks={i:str(i) for i in range(1,6)}),
+                    dcc.Graph(id='cluster-radar')
+                ], style={'padding':'10px'})
+            ])
+        ])
+])
+
+# -----------------------------
+# Callbacks
+# -----------------------------
+# 3D Hearing Mountain
+@app.callback(
+    Output('surface-3d','figure'),
+    Input('cluster-slider','value')
+)
+def update_surface_clustered(n_clusters):
+    right_data = aux_df[right_ear_cols].apply(pd.to_numeric, errors='coerce').fillna(aux_df[right_ear_cols].mean())
+    ages = aux_df['RIDAGEYR'].values
+    freqs = np.array(right_freqs)
+
+    # KMeans clustering by participant
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    clusters = kmeans.fit_predict(right_data)
+
+    # Create surface
+    X_grid, Y_grid = np.meshgrid(ages, freqs, indexing='ij')
+    Z = right_data.values
+
+    fig = go.Figure(data=[go.Surface(
+        x=X_grid, y=Y_grid, z=Z, surfacecolor=np.repeat(clusters[:,None], len(freqs), axis=1),
+        colorscale='Plotly', colorbar=dict(title='Cluster')
+    )])
+    fig.update_layout(
+        scene=dict(xaxis_title='Age', yaxis_title='Frequency (Hz)', zaxis_title='Threshold (dB)'),
+        title=f'3D Hearing Mountain with {n_clusters} Clusters'
+    )
+    return fig
+
+# Ribbon Forest
+@app.callback(
+    Output('ribbon-forest-clustered','figure'),
+    Input('ribbon-cluster-slider','value')
+)
+def update_ribbon_forest(n_clusters):
+    X = aux_df[right_ear_cols].fillna(aux_df[right_ear_cols].mean())
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42).fit(X)
+    aux_df['cluster'] = kmeans.labels_
+
+    fig = go.Figure()
+    colors = px.colors.qualitative.Plotly
+    for idx, row in aux_df.iterrows():
+        fig.add_trace(go.Scatter3d(
+            x=[row['RIDAGEYR']]*len(right_ear_cols),
+            y=right_freqs,
+            z=row[right_ear_cols].values,
+            mode='lines+markers',
+            line=dict(width=4, color=colors[int(row['cluster'])%len(colors)]),
+            marker=dict(size=3),
+            hovertemplate='Age: %{x}<br>Freq: %{y} Hz<br>Threshold: %{z} dB<br>Cluster: '+str(int(row['cluster']))
+        ))
+    fig.update_layout(
+        scene=dict(xaxis_title='Age', yaxis_title='Frequency', zaxis_title='Threshold'),
+        title=f'3D Ribbon Forest with {n_clusters} Clusters'
+    )
+    return fig
+
+# Cluster Average Radar
+@app.callback(
+    Output('cluster-radar','figure'),
+    Input('avg-cluster-slider','value')
+)
+def cluster_avg_radar(n_clusters):
+    X = aux_df[right_ear_cols].fillna(aux_df[right_ear_cols].mean())
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42).fit(X)
+    aux_df['cluster'] = kmeans.labels_
+
+    categories = [str(f) for f in right_freqs]
+    fig = go.Figure()
+    colors = px.colors.qualitative.Plotly
+    for cluster_idx in range(n_clusters):
+        cluster_data = X[aux_df['cluster']==cluster_idx]
+        avg_values = cluster_data.mean().values.tolist()
+        avg_values += avg_values[:1]  # close loop
+        fig.add_trace(go.Scatterpolar(
+            r=avg_values,
+            theta=categories + [categories[0]],
+            fill='toself',
+            name=f'Cluster {cluster_idx}',
+            line=dict(color=colors[cluster_idx%len(colors)], width=3)
+        ))
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True)),
+        title=f'Average Hearing Profiles for {n_clusters} Clusters'
+    )
+    return fig
+
+# -----------------------------
+# Run Server
+# -----------------------------
+if __name__ == '__main__':
+    url = "http://127.0.0.1:8050/"
+    Timer(1, lambda: webbrowser.open(url)).start()
+    app.run(debug=True)

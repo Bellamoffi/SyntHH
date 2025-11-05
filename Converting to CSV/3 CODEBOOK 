@@ -1,0 +1,133 @@
+codebook_text = """ SEQN - Respondent sequence number
+WTSAU2YR - Audiometry Subsample 2 Year Mec Weight
+WTSAU4YR - Audiometry Subsample 4 Year Mec Weight
+WTSAU01 - Audiometry Mec Weight Jack Knife Rep 1
+WTSAU02 - Audiometry Mec Weight Jack Knife Rep 2
+WTSAU03 - Audiometry Mec Weight Jack Knife Rep 3
+WTSAU04 - Audiometry Mec Weight Jack Knife Rep 4
+WTSAU05 - Audiometry Mec Weight Jack Knife Rep 5
+WTSAU06 - Audiometry Mec Weight Jack Knife Rep 6
+WTSAU07 - Audiometry Mec Weight Jack Knife Rep 7
+WTSAU08 - Audiometry Mec Weight Jack Knife Rep 8
+WTSAU09 - Audiometry Mec Weight Jack Knife Rep 9
+WTSAU10 - Audiometry Mec Weight Jack Knife Rep 10
+WTSAU11 - Audiometry Mec Weight Jack Knife Rep 11
+WTSAU12 - Audiometry Mec Weight Jack Knife Rep 12
+WTSAU13 - Audiometry Mec Weight Jack Knife Rep 13
+WTSAU14 - Audiometry Mec Weight Jack Knife Rep 14
+WTSAU15 - Audiometry Mec Weight Jack Knife Rep 15
+WTSAU16 - Audiometry Mec Weight Jack Knife Rep 16
+WTSAU17 - Audiometry Mec Weight Jack Knife Rep 17
+WTSAU18 - Audiometry Mec Weight Jack Knife Rep 18
+WTSAU19 - Audiometry Mec Weight Jack Knife Rep 19
+WTSAU20 - Audiometry Mec Weight Jack Knife Rep 20
+WTSAU21 - Audiometry Mec Weight Jack Knife Rep 21
+WTSAU22 - Audiometry Mec Weight Jack Knife Rep 22
+WTSAU23 - Audiometry Mec Weight Jack Knife Rep 23
+WTSAU24 - Audiometry Mec Weight Jack Knife Rep 24
+WTSAU25 - Audiometry Mec Weight Jack Knife Rep 25
+WTSAU26 - Audiometry Mec Weight Jack Knife Rep 26
+WTSAU27 - Audiometry Mec Weight Jack Knife Rep 27
+WTSAU28 - Audiometry Mec Weight Jack Knife Rep 28
+WTSAU29 - Audiometry Mec Weight Jack Knife Rep 29
+WTSAU30 - Audiometry Mec Weight Jack Knife Rep 30
+WTSAU31 - Audiometry Mec Weight Jack Knife Rep 31
+WTSAU32 - Audiometry Mec Weight Jack Knife Rep 32
+WTSAU33 - Audiometry Mec Weight Jack Knife Rep 33
+WTSAU34 - Audiometry Mec Weight Jack Knife Rep 34
+WTSAU35 - Audiometry Mec Weight Jack Knife Rep 35
+WTSAU36 - Audiometry Mec Weight Jack Knife Rep 36
+WTSAU37 - Audiometry Mec Weight Jack Knife Rep 37
+WTSAU38 - Audiometry Mec Weight Jack Knife Rep 38
+WTSAU39 - Audiometry Mec Weight Jack Knife Rep 39
+WTSAU40 - Audiometry Mec Weight Jack Knife Rep 40
+WTSAU41 - Audiometry Mec Weight Jack Knife Rep 41
+WTSAU42 - Audiometry Mec Weight Jack Knife Rep 42
+WTSAU43 - Audiometry Mec Weight Jack Knife Rep 43
+WTSAU44 - Audiometry Mec Weight Jack Knife Rep 44
+WTSAU45 - Audiometry Mec Weight Jack Knife Rep 45
+WTSAU46 - Audiometry Mec Weight Jack Knife Rep 46
+WTSAU47 - Audiometry Mec Weight Jack Knife Rep 47
+WTSAU48 - Audiometry Mec Weight Jack Knife Rep 48
+WTSAU49 - Audiometry Mec Weight Jack Knife Rep 49
+WTSAU50 - Audiometry Mec Weight Jack Knife Rep 50
+WTSAU51 - Audiometry Mec Weight Jack Knife Rep 51
+WTSAU52 - Audiometry Mec Weight Jack Knife Rep 52
+AUAEXSTS - Status of an Audio Exam
+AUAEXCMT - Comment code for an Audio Exam
+AUQ010 - Have Ear Tube, Right or Left Ear?
+AUQ020 - Had Cold, Sinus or Earache Last 24 Hrs?
+AUQ020A - Had Cold Last 24 Hrs?
+AUQ020B - Had Sinus Problem Last 24 Hours?
+AUQ020C - Earache Last 24 Hours, Right?
+AUQ020D - Earache Last 24 Hours, Left?
+AUQ020E - Earache Last 24 Hours, Both?
+AUQ030 - Exposed Loud Noise/Music Last 24 Hrs?
+AUQ040 - Hours Since Noise/Music Ended?
+AUQ050 - Self Reported Better Ear
+AUXOTSPL - Normal Otoscopy, Left Ear?
+AUXLOEXC - Excessive Cerumen, Left Ear
+AUXLOIMC - Impacted Cerumen, Left Ear
+AUXLOCOL - Collapsing Ear Canals, Left Ear
+AUXLOABN - Other Exam Abnormality, Left Ear?
+AUDLOABC - Comment:Other Ear Exam Abnormality, Left
+AUXROTSP - Normal Otoscopy, Right Ear?
+AUXROEXC - Excessive Cerumen, Right Ear
+AUXROIMC - Impacted Cerumen, Right Ear
+AUXROCOL - Collapsing Ear Canals, Right Ear
+AUXROABN - Other Exam Abnormality, Right Ear?
+AUDROABC - Comment Other Ear Exam Abnormality Right
+AUXTMEPR - Middle Ear Pressure-Tymp, Rt Ear in daPa
+AUXTPVR - Physical Volume-Tymp, Right Ear in cc
+AUXTWIDR - Tympanometric width, right ear
+AUXTCOMR - Compliance (tympanometry), right ear
+AUXTMEPL - Middle Ear Pressure, Tymp, Left in dapa
+AUXTPVL - Physical Volume-Tymp, Left ear in cc
+AUXTWIDL - Tympanometric width, left ear
+AUXTCOML - Compliance (tympanometry), left ear
+AUAEAR - Which ear tested first?
+AUAMODE - Audio Test Mode-Manual/Automatic/Mixed
+AUAFMANL - Frequency, Switch to Manual Mode, Left
+AUAFMANR - Frequency-Switch to Manual Mode, Right
+AUXU1K1R - Right threshold @ 1000Hz (db)
+AUXU500R - Right threshold @ 500Hz (db)
+AUXU1K2R - Right Threshold @ 1000Hz-2nd Read (db)
+AUXU2KR - Right threshold @ 2000Hz (db)
+AUXU3KR - Right threshold @ 3000Hz (db)
+AUXU4KR - Right threshold @ 4000Hz (db)
+AUXU6KR - Right threshold @ 6000Hz (db)
+AUXU8KR - Right threshold @ 8000Hz (db)
+AUXU1K1L - Left threshold @ 1000Hz (db)
+AUXU500L - Left threshold @ 500Hz (db)
+AUXU1K2L - Left threshold @ 1000Hz-2nd Read (db)
+AUXU2KL - Left threshold @ 2000Hz (db)
+AUXU3KL - Left threshold @ 3000Hz (db)
+AUXU4KL - Left threshold @ 4000Hz (db)
+AUXU6KL - Left threshold @ 6000Hz (db)
+AUXU8KL - Left threshold @ 8000Hz (db)
+AUXR1K1R - Right retest threshold @ 1000Hz (db)
+AUXR5CR - Right retest threshold @ 500Hz (db)
+AUXR1K2R - Right Retest Threshold 1000Hz-2nd Read
+AUXR2KR - Right retest threshold @ 2000Hz (db)
+AUXR3KR - Right retest threshold @ 3000Hz (db)
+AUXR4KR - Right retest threshold @ 4000Hz (db)
+AUXR6KR - Right retest threshold @ 6000Hz (db)
+AUXR8KR - Right retest threshold @ 8000Hz (db)
+AUXR1K1L - Left retest threshold @ 1000Hz (db)
+AUXR5CL - Left retest threshold @ 500Hz (db)
+AUXR1K2L - Left Retest Threshold 1000-2nd Read
+AUXR2KL - Left retest threshold @ 2000Hz (db)
+AUXR3KL - Left retest threshold @ 3000Hz (db)
+AUXR4KL - Left retest threshold @ 4000Hz (db)
+AUXR6KL - Left retest threshold @ 6000Hz (db)
+AUXR8KL - Left retest threshold @ 8000Hz (db)
+AUAREQC - Right Ear Quality Code
+AUALEQC - Left Ear Quality Code """
+
+column_map = {}
+for line in codebook_text.strip().split("\n"):
+    if "-" in line:
+        key, value = line.split("-", 1)
+        column_map[key.strip()] = value.strip()
+
+print(column_map)

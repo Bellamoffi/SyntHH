@@ -1,0 +1,178 @@
+import pandas as pd
+import numpy as np
+import glob
+import os
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, roc_auc_score
+from sklearn.inspection import permutation_importance
+
+# ----------------------------
+# 1. Define base directory and BP folder
+# ----------------------------
+base_dir = "/Users/isabella/Library/Mobile Documents/com~apple~CloudDocs/Graduated/UCL EvidENT/DOWNLOADED DATA/CSV DATA/"
+
+# Automatic BP folder detection
+bp_folders = ["Blood Pressure - Oscillometric Measurement", "BLOOD PRESSURE"]
+for folder in bp_folders:
+    full_path = os.path.join(base_dir, folder)
+    if os.path.exists(full_path) and os.path.isdir(full_path):
+        bp_folder = full_path
+        print(f"Using BP folder: {folder}")
+        break
+else:
+    raise ValueError("No Blood Pressure folder found!")
+
+# ----------------------------
+# 2. File paths
+# ----------------------------
+paths = {
+    "bpx": os.path.join(bp_folder, "*.csv"),
+    "bmx": os.path.join(base_dir, "Body Measures/*.csv"),
+    "mcq": os.path.join(base_dir, "Medical Conditions/*.csv"),
+    "diq": os.path.join(base_dir, "Diabetes/*.csv"),
+    "alq": os.path.join(base_dir, "Alcohol Use/*.csv"),
+    "smq": os.path.join(base_dir, "Smoking - Cigarette Use/*.csv"),
+    "paq": os.path.join(base_dir, "Physical Activity/*.csv"),
+    "ghb": os.path.join(base_dir, "Glycohemoglobin/*.csv"),
+}
+
+# ----------------------------
+# 3. Helper: load CSVs safely
+# ----------------------------
+def load_data(path_pattern, name=None):
+    files = glob.glob(path_pattern)
+    if not files:
+        print(f"Warning: no files found for {name or path_pattern}")
+        return pd.DataFrame()
+    dfs = [pd.read_csv(f) for f in files]
+    return pd.concat(dfs, ignore_index=True)
+
+# ----------------------------
+# 4. Load datasets
+# ----------------------------
+bpx  = load_data(paths["bpx"], "BPX")
+bmx  = load_data(paths["bmx"], "BMX")
+mcq  = load_data(paths["mcq"], "MCQ")
+diq  = load_data(paths["diq"], "DIQ")
+alq  = load_data(paths["alq"], "ALQ")
+smq  = load_data(paths["smq"], "SMQ")
+paq  = load_data(paths["paq"], "PAQ")
+ghb  = load_data(paths["ghb"], "GHB")
+
+# ----------------------------
+# 5. Merge datasets safely
+# ----------------------------
+for df_start in [bpx, bmx, mcq, diq, alq, smq, paq, ghb]:
+    if not df_start.empty:
+        df = df_start.copy()
+        break
+else:
+    raise ValueError("No data loaded!")
+
+for dset in [bpx, bmx, mcq, diq, alq, smq, paq, ghb]:
+    if not dset.empty and dset is not df:
+        df = df.merge(dset, on="SEQN", how="left")
+
+# ----------------------------
+# 6. Feature selection (expanded)
+# ----------------------------
+features = [
+    # Body measures
+    "BMXWAIST","BMXBMI","BMXWT","BMXHT","BMXLEG","BMXARML","BMXARMC","BMXTRI","BMXTHICR",
+    # Blood pressure
+    "BPXSY1","BPXSY2","BPXSY3","BPXDI1","BPXDI2","BPXDI3",
+    # Diet / nutrition
+    "DR1TCARB","DR1TSODI","DR1TALCO","DR1TCAFF","DR1TFIBE","DR1TPROT","DR1TTFAT","DR1TSUGR",
+    # Lifestyle
+    "MCQ160F","DIQ170","SMQ020","SMQ040","PAQ650","PAQ665",
+    # Demographics
+    "RIDAGEYR","RIDRETH1","INDFMIN2","DMDEDUC2"
+]
+
+labs = ["LBXGLU","LBXGH","LBXTC","LBDHDD","LBXTR","LBXLDL","LBXSAPSI","LBXALT"]
+
+all_features = [f for f in features + labs if f in df.columns]
+df_features = df[all_features].copy()
+
+# ----------------------------
+# 7. Define outcomes
+# ----------------------------
+df["diabetes"] = (
+    ((df.get("LBXGH", 0) >= 6.5) |
+     (df.get("LBXGLU", 0) >= 126) |
+     (df.get("MCQ160E", 0) == 1))
+).astype(int)
+
+df["cvd"] = (
+    ((df.get("MCQ160B", 0) == 1) |
+     (df.get("MCQ160C", 0) == 1) |
+     (df.get("MCQ160E", 0) == 1))
+).astype(int)
+
+# ----------------------------
+# 8. Preprocess: remove leakage features
+# ----------------------------
+leak_features = [f for f in ["LBXGH","LBXGLU","MCQ160E"] if f in df_features.columns]
+X = df_features.drop(columns=leak_features)
+y = df["diabetes"]
+
+# Fill missing and encode categorical
+X = X.fillna(X.median())
+X = pd.get_dummies(X, drop_first=True)
+
+# ----------------------------
+# 9. Human-readable labels
+# ----------------------------
+feature_labels = {
+    "BMXWAIST":"Waist (cm)","BMXBMI":"BMI (kg/m²)","BMXWT":"Weight (kg)","BMXHT":"Height (cm)",
+    "BMXLEG":"Leg Length (cm)","BMXARML":"Arm Length (cm)","BMXARMC":"Arm Circumference (cm)",
+    "BMXTRI":"Triceps Skinfold (mm)","BMXTHICR":"Thigh Circumference (cm)",
+    "BPXSY1":"Systolic BP 1","BPXSY2":"Systolic BP 2","BPXSY3":"Systolic BP 3",
+    "BPXDI1":"Diastolic BP 1","BPXDI2":"Diastolic BP 2","BPXDI3":"Diastolic BP 3",
+    "DR1TCARB":"Carbs (g)","DR1TSODI":"Sodium (mg)","DR1TALCO":"Alcohol (g)",
+    "DR1TCAFF":"Caffeine (mg)","DR1TFIBE":"Fiber (g)","DR1TPROT":"Protein (g)",
+    "DR1TTFAT":"Fat (g)","DR1TSUGR":"Sugar (g)",
+    "MCQ160F":"High Cholesterol","DIQ170":"Family Diabetes",
+    "SMQ020":"Current Smoker","SMQ040":"Cigarettes/day","PAQ650":"Moderate Activity","PAQ665":"Vigorous Activity",
+    "RIDAGEYR":"Age","RIDRETH1":"Ethnicity","INDFMIN2":"Family Income","DMDEDUC2":"Education Level",
+    "LBXGLU":"Fasting Glucose","LBXGH":"HbA1c","LBXTC":"Total Cholesterol","LBDHDD":"HDL",
+    "LBXTR":"Triglycerides","LBXLDL":"LDL","LBXSAPSI":"AST","LBXALT":"ALT"
+}
+
+# ----------------------------
+# 10. Train/test split
+# ----------------------------
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# ----------------------------
+# 11. Train model
+# ----------------------------
+model = RandomForestClassifier(n_estimators=200, random_state=42)
+model.fit(X_train, y_train)
+
+# ----------------------------
+# 12. Evaluate
+# ----------------------------
+y_pred = model.predict(X_test)
+print(classification_report(y_test, y_pred))
+print("AUC:", roc_auc_score(y_test, model.predict_proba(X_test)[:,1]))
+
+# ----------------------------
+# 13. Permutation Feature Importance
+# ----------------------------
+perm_result = permutation_importance(model, X_test, y_test, n_repeats=10, random_state=42)
+perm_importances = perm_result.importances_mean
+indices = np.argsort(perm_importances)[::-1]  # descending
+
+labels = [feature_labels.get(f, f) for f in X.columns]
+
+plt.figure(figsize=(10,8))
+plt.barh(range(len(indices)), perm_importances[indices][::-1])
+plt.yticks(range(len(indices)), [labels[i] for i in indices][::-1])
+plt.xlabel("Permutation Importance (Decrease in Accuracy)")
+plt.title("Permutation Feature Importance for Diabetes Prediction")
+plt.tight_layout()
+plt.show()
+

@@ -1,0 +1,30 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2759
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fnil\fcharset0 Menlo-Regular;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;}
+{\*\expandedcolortbl;;\csgray\c0;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 # README\
+## Data folder structure\
+The NHANES data is stored under the following structure:\
+\
+\'97 data\
+ |\'97> demo (contains the `.csv` files of demographic data for NHANES cohorts)\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf0  |\'97> aux (contains the `.csv` files of pure-tone audiometry data for NHANES cohorts)\
+ |\'97> reflex (contains the `.csv` files of acoustic reflex data for NHANES cohorts)\
+ |\'97> tymp (contains the `.csv` files of ympanometry data for NHANES cohorts)\
+ |\'97> xpt (contains the original `.xpt` files downloaded from NHANES website)\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf0 \
+## .XPT to .csv\
+To convert XPT data to csv use the following command line:\
+\
+```\
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\pardirnatural\partightenfactor0
+
+\f1\fs22 \cf2 \CocoaLigature0 python -m xport input_fhand.XPT > output_fhand.csv
+\f0\fs24 \cf0 \CocoaLigature1 \
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf0 ```}

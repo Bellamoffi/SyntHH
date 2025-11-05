@@ -1,0 +1,40 @@
+import os
+import pyreadstat
+
+# Base input folder containing subfolders with XPT files
+base_input_folder = "/Users/isabella/Library/Mobile Documents/com~apple~CloudDocs/Graduated/UCL EvidENT/DOWNLOADED DATA/XPT DATA"
+
+# Base output folder for CSV files
+base_output_folder = "/Users/isabella/Library/Mobile Documents/com~apple~CloudDocs/Graduated/UCL EvidENT/DOWNLOADED DATA/CSV DATA"
+os.makedirs(base_output_folder, exist_ok=True)
+
+# Loop through all subfolders in the input folder
+for subfolder in os.listdir(base_input_folder):
+    input_folder = os.path.join(base_input_folder, subfolder)
+
+    # Only process directories
+    if not os.path.isdir(input_folder):
+        continue
+
+    # Create corresponding output folder inside CSV DATA
+    output_folder = os.path.join(base_output_folder, subfolder)
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Loop through all .XPT files in the subfolder
+    for file in os.listdir(input_folder):
+        if file.lower().endswith(".xpt"):
+            xpt_path = os.path.join(input_folder, file)
+            csv_filename = file.replace(".xpt", ".csv")
+            csv_path = os.path.join(output_folder, csv_filename)
+
+            try:
+                # Read the .XPT file
+                df, meta = pyreadstat.read_xport(xpt_path)
+
+                # Save as CSV
+                df.to_csv(csv_path, index=False, encoding='utf-8')
+                print(f"Converted {file} → {csv_filename} in folder {subfolder}")
+            except Exception as e:
+                print(f"Failed to convert {file} in folder {subfolder}: {e}")
+
+print("All folders processed.")

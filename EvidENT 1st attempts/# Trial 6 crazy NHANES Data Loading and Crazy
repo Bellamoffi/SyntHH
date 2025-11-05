@@ -1,0 +1,210 @@
+# NHANES Dashboard with Dynamic Clustering
+# Author: Isabella
+# Date: 2025-09-15
+
+import os
+import pandas as pd
+import numpy as np
+from scipy.interpolate import griddata
+import re
+from sklearn.cluster import KMeans
+
+import dash
+from dash import dcc, html
+from dash.dependencies import Input, Output
+import plotly.express as px
+import plotly.graph_objects as go
+
+# -----------------------------
+# Load Data
+# -----------------------------
+data_folder = '/Users/isabella/SyntHH/data'
+demo_path = os.path.join(data_folder, 'demo', 'nhanes_demo_1999-2000.csv')
+aux_path  = os.path.join(data_folder, 'pta', 'nhanes_aux_1999-2000.csv')
+
+demo_df = pd.read_csv(demo_path)
+aux_df  = pd.read_csv(aux_path)
+
+# -----------------------------
+# Filter Frequency Columns
+# -----------------------------
+right_ear_cols = [c for c in aux_df.columns if c.endswith('R') and re.match(r'AUXU.*R', c)]
+left_ear_cols  = [c for c in aux_df.columns if c.endswith('L') and re.match(r'AUXU.*L', c)]
+
+def col_to_freq(col_name):
+    try:
+        freq_str = col_name[4:-1]
+        if 'K' in freq_str:
+            return int(freq_str.replace('K','000'))
+        elif freq_str.isdigit():
+            return int(freq_str)
+    except:
+        return None
+
+freq_values = [col_to_freq(c) for c in right_ear_cols]
+right_ear_cols = [c for c,f in zip(right_ear_cols, freq_values) if f is not None]
+freq_values = [f for f in freq_values if f is not None]
+
+if 'RIDAGEYR' not in aux_df.columns:
+    aux_df['RIDAGEYR'] = np.random.randint(18,80,size=len(aux_df))
+demo_df['RIDAGEYR'] = aux_df['RIDAGEYR']
+
+# -----------------------------
+# Dash App Setup
+# -----------------------------
+app = dash.Dash(__name__)
+app.title = "NHANES Hearing Dashboard"
+
+app.layout = html.Div([
+    html.H1("NHANES Hearing Data Interactive Dashboard"),
+    dcc.Tabs([
+        dcc.Tab(label='Scatter Plots', children=[
+            html.H3('Right Ear'),
+            dcc.Graph(
+                id='scatter-right',
+                figure=px.scatter(
+                    aux_df.melt(id_vars='RIDAGEYR', value_vars=right_ear_cols, 
+                                var_name='Frequency', value_name='Threshold'),
+                    x='RIDAGEYR', y='Threshold', color='Frequency',
+                    hover_data=['RIDAGEYR','Threshold'],
+                    title='Right Ear: Hearing Thresholds vs Age'
+                )
+            ),
+            html.H3('Left Ear'),
+            dcc.Graph(
+                id='scatter-left',
+                figure=px.scatter(
+                    aux_df.melt(id_vars='RIDAGEYR', value_vars=left_ear_cols, 
+                                var_name='Frequency', value_name='Threshold'),
+                    x='RIDAGEYR', y='Threshold', color='Frequency',
+                    hover_data=['RIDAGEYR','Threshold'],
+                    title='Left Ear: Hearing Thresholds vs Age'
+                )
+            )
+        ]),
+        dcc.Tab(label='3D Hearing Surface', children=[
+            dcc.Graph(id='surface-3d')
+        ]),
+        dcc.Tab(label='Radar Plots', children=[
+            html.Label('Select Participant Index:'),
+            dcc.Slider(
+                id='participant-slider',
+                min=0,
+                max=len(aux_df)-1,
+                value=0,
+                marks={i:str(i) for i in range(0,len(aux_df), max(1,len(aux_df)//10))},
+                step=1
+            ),
+            dcc.Graph(id='radar-plot')
+        ]),
+        dcc.Tab(label='3D Ribbon Forest', children=[
+            html.Label('Number of Clusters:'),
+            dcc.Slider(
+                id='cluster-slider',
+                min=1,
+                max=5,
+                step=1,
+                value=3,
+                marks={i:str(i) for i in range(1,6)}
+            ),
+            dcc.Graph(id='ribbon-forest-clustered')
+        ])
+    ])
+])
+
+# -----------------------------
+# Callbacks
+# -----------------------------
+@app.callback(
+    Output('surface-3d','figure'),
+    Input('scatter-right','id')  # dummy input to trigger on load
+)
+def update_surface(_):
+    ages_unique = np.linspace(aux_df['RIDAGEYR'].min(), aux_df['RIDAGEYR'].max(), 100)
+    freq_grid, age_grid = np.meshgrid(freq_values, ages_unique)
+    threshold_grid = griddata(
+        (np.repeat(aux_df['RIDAGEYR'].values,len(freq_values)),
+         np.tile(freq_values,len(aux_df))),
+        np.concatenate([aux_df[c].values for c in right_ear_cols]),
+        (age_grid, freq_grid),
+        method='cubic'
+    )
+    fig = go.Figure(data=[go.Surface(x=age_grid, y=freq_grid, z=threshold_grid, colorscale='Viridis')])
+    fig.update_layout(scene=dict(
+        xaxis_title='Age',
+        yaxis_title='Frequency (Hz)',
+        zaxis_title='Threshold (dB)'),
+        title='Interactive 3D Hearing Mountain'
+    )
+    return fig
+
+@app.callback(
+    Output('radar-plot','figure'),
+    Input('participant-slider','value')
+)
+def update_radar(idx):
+    participant = aux_df.iloc[idx]
+    categories = [c[4:-1] for c in right_ear_cols]
+    values = participant[right_ear_cols].values.tolist()
+    values += values[:1]
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=values,
+        theta=categories + [categories[0]],
+        fill='toself',
+        name=f'SEQN {participant["SEQN"]}'
+    ))
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0,max(values)+10])),
+        title=f'Hearing Fingerprint for SEQN {participant["SEQN"]}'
+    )
+    return fig
+
+@app.callback(
+    Output('ribbon-forest-clustered','figure'),
+    Input('cluster-slider','value')
+)
+def update_ribbon_clusters(n_clusters):
+    X = aux_df[right_ear_cols].fillna(aux_df[right_ear_cols].mean())
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42).fit(X)
+    aux_df['cluster'] = kmeans.labels_
+    
+    participants = aux_df.head(50)  # first 50 for clarity
+    colors = px.colors.qualitative.Plotly
+    fig = go.Figure()
+    
+    for idx, row in participants.iterrows():
+        cluster_idx = int(row['cluster'])
+        thresholds = row[right_ear_cols].values
+        fig.add_trace(go.Scatter3d(
+            x=[row['RIDAGEYR']]*len(freq_values),
+            y=freq_values,
+            z=thresholds,
+            mode='lines+markers',
+            name=f'SEQN {int(row["SEQN"])} (Cluster {cluster_idx})',
+            line=dict(width=4, color=colors[cluster_idx % len(colors)]),
+            marker=dict(size=3),
+            hovertemplate='Age: %{x}<br>Freq: %{y} Hz<br>Threshold: %{z} dB<br>Cluster: '+str(cluster_idx)
+        ))
+    
+    fig.update_layout(scene=dict(
+        xaxis_title='Age',
+        yaxis_title='Frequency (Hz)',
+        zaxis_title='Threshold (dB)'
+    ), title=f'3D Ribbon Forest Colored by {n_clusters} Clusters')
+    
+    return fig
+
+# -----------------------------
+# Run App
+# -----------------------------
+import webbrowser
+from threading import Timer
+
+if __name__ == '__main__':
+    # Automatically open browser
+    url = "http://127.0.0.1:8050/"
+    Timer(1, lambda: webbrowser.open(url)).start()
+    
+    # Run Dash app (Dash 3.x)
+    app.run(debug=True)

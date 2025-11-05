@@ -1,3 +1,7 @@
+# data
+./data/**
+./data/xpt/**
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -240,3 +244,4 @@ plots/
 
 # Conda environment
 conda-meta/
+data/xpt/*.XPT
